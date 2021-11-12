@@ -50,12 +50,12 @@ int num_time = 0;
 int trial_count = 0;
 int prev_state = 0;
 int current_state = 0;
-float prev_w_hip, current_w_hip, prev_aa_hip, current_aa_hip, prev_time, current_time, start_time, time_for_output;
+float prev_w_hip, prev_aa_hip, current_aa_hip, prev_time, current_time, start_time, time_for_output;
 float time_stamp1 = 0.0;
 float time_stamp2 = 0.0;
 float time_stamp3 = 0.0;
 float time_stamp4 = 0.0;
-float calibration_time_sec = 0;
+float calibration_steps = 0;
 int detection_steps = 0;
 
 bool isHigh = true;
@@ -64,7 +64,7 @@ volatile bool isMainRight = false;  //MainLegが左右どちらかを表す．bo
 volatile bool isMainLeft = false;
 volatile bool isDetection = false;
 volatile bool isDetected = false;
-volatile bool isReceivedTime = false;
+volatile bool isReceivedC_params = false;
 volatile bool isCalibration = false;
 //volatile bool isStart = false;
 volatile bool isRecievedD_param = false;
@@ -101,7 +101,9 @@ float thresholds_R_max,
 
 //calibration
 String sign;
-char charTime[20], charD_param[120];
+char charC_param[20], charD_param[120];
+int n_of_steps = 0;
+float current_w_hip, current_FS;
 
 //Detection
 String RorL;
@@ -285,13 +287,14 @@ void loop() {
   if (SERIAL_PORT.available() > 0) { // キー入力待ち
     sign = SERIAL_PORT.readStringUntil('\r');//文字取り出す
     if (sign == "c") {
-      while (!isReceivedTime) {
+      while (!isReceivedC_params) {
         if (SERIAL_PORT.available() > 0) {
-          charTime[num_time] = SERIAL_PORT.read();
-          if (charTime[num_time] == '\r') {
-            charTime[num_time] = '\0';
-            calibration_time_sec = atof(charTime);
-            isReceivedTime = true;
+          charC_param[num_time] = SERIAL_PORT.read();
+          if (charC_param[num_time] == '\r') {
+            charC_param[num_time] = '\0';
+            calibration_steps = atof(strtok(charC_param, ","));
+            max_step_duration = atof(strtok(NULL, ","));
+            isReceivedC_params = true;
             num_time = 0;
           } else {
             num_time += 1;
@@ -300,12 +303,13 @@ void loop() {
       }
       SERIAL_PORT.println("start calibration");
       isCalibration = true;
-      SERIAL_PORT.print("Time,");
-      SERIAL_PORT.print("Right_w_hip,");
-      SERIAL_PORT.print("Left_w_hip,");
-      SERIAL_PORT.print("Right_FS,");
-      SERIAL_PORT.println("Left_FS");
+//      SERIAL_PORT.print("Time,");
+//      SERIAL_PORT.print("Right_w_hip,");
+//      SERIAL_PORT.print("Left_w_hip,");
+//      SERIAL_PORT.print("Right_FS,");
+//      SERIAL_PORT.println("Left_FS");
       start_time = millis();
+      digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     } else if (sign == "d") {
       while (!isRecievedD_param) {
         if (SERIAL_PORT.available() > 0) {
@@ -359,6 +363,23 @@ void loop() {
     }
   }
   if (isRecording) {
+    while (!isRecievedRorL) {
+      if (SERIAL_PORT.available() > 0) { //キー入力待ち
+        RorL = SERIAL_PORT.readStringUntil('\r');//文字取り出す
+        if (RorL == "r") {
+          //mainleg をrightとする
+          isMainRight = true;
+          step_start_time = millis();
+          isRecievedRorL = true;
+        } else if (RorL == "l") {
+          //mainlegをleftとする
+          isMainLeft = true;
+          L_current_state = 3;
+          step_start_time = millis();
+          isRecievedRorL = true;
+        }
+      }
+    }
     if ( myICM_right.dataReady() && myICM_left.dataReady()) {
 
       myICM_right.getAGMT();                // The values are only updated when you call 'getAGMT'
@@ -368,34 +389,56 @@ void loop() {
       fsr_Right = analogRead(fsrAnalogPin_right);
       fsr_Left = analogRead(fsrAnalogPin_left);
 
+      //adjust the variables magnitude
       R_current_FS = fsr_Right / 1024 * 5;
       L_current_FS = fsr_Left / 1024 * 5;
 
-      //変数に取得したデータを代入している
+      if (isMainRight) {
+        //変数に取得したデータを代入している
+        current_w_hip = myICM_right.gyrZ();
+        current_FS = R_current_FS;
 
-      R_prev_w_hip = R_current_w_hip;
-      R_current_w_hip = myICM_right.gyrZ();
+        //matlabに送信する
+        current_time = millis();
+        step_duration = (current_time - step_start_time) / 1000.00;
+        time_for_output = (current_time - start_time) / 1000.00;
 
-      //変数に取得したデータを代入している
-      L_prev_w_hip = L_current_w_hip;
-      L_current_w_hip = - myICM_left.gyrZ();
-      current_time = millis();
-      time_for_output = (current_time - start_time) / 1000.00;
-      SERIAL_PORT.print(time_for_output, 3);
-      SERIAL_PORT.print(",");
-      SERIAL_PORT.print(R_current_w_hip, 3);
-      SERIAL_PORT.print(",");
-      SERIAL_PORT.print(L_current_w_hip, 3);
-      SERIAL_PORT.print(",");
-      SERIAL_PORT.print(R_current_FS, 3);
-      SERIAL_PORT.print(",");
-      SERIAL_PORT.println(L_current_FS, 3);
+      } else if (isMainLeft) {
+
+        //変数に取得したデータを代入している
+        current_w_hip = - myICM_left.gyrZ();
+        current_FS = L_current_FS;
+
+        //データをmatlabに送信する
+        current_time = millis();
+        step_duration = (current_time - step_start_time) / 1000.00;
+        time_for_output = (current_time - start_time) / 1000.00;
+
+      }
+      
+      //check if one step is finish or not.
+      if (step_duration >= max_step_duration) {
+        SERIAL_PORT.println("Finish Step");
+        isRecievedRorL = false;
+        isMainRight = false;
+        isMainLeft = false;
+        n_of_steps += 1;
+      } else {
+        SERIAL_PORT.print(step_duration, 3);
+        SERIAL_PORT.print(",");
+        SERIAL_PORT.print(current_FS);
+        SERIAL_PORT.print(",");
+        SERIAL_PORT.println(current_w_hip);
+      }
+      
       isRecording = false;
-      if (time_for_output > calibration_time_sec) {
-        SERIAL_PORT.println("Finish calibration");
+
+      //check if number of steps exceed calibration_steps
+      if (n_of_steps >= calibration_steps) {
+        SERIAL_PORT.println("Finish calibration section");
         isCalibration = false;
-        //        isStart = false;
-        isReceivedTime  = false;
+        isReceivedC_params  = false;
+        n_of_steps = 0;
       }
     }
     else {
@@ -528,7 +571,7 @@ void loop() {
           SERIAL_PORT.print(L_current_FS);
           SERIAL_PORT.print(",");
           SERIAL_PORT.println(L_current_w_hip);
-        }else{
+        } else {
           SERIAL_PORT.println("Finish Step");
           isfinishstep = false;
         }

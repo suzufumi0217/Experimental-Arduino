@@ -70,8 +70,8 @@ volatile bool isCalibration = false;
 volatile bool isRecievedD_param = false;
 volatile bool isRecievedRorL = false;
 
-int fsrAnalogPin_right = 0; // FSR0 is connected to analog 0
-int fsrAnalogPin_left = 1; // FSR1 is connected to analog 1
+int fsrAnalogPin_right = 1; // FSR0 is connected to analog 0
+int fsrAnalogPin_left = 0; // FSR1 is connected to analog 1
 int Rightheelstrike = 0;
 int Leftheelstrike = 0;
 

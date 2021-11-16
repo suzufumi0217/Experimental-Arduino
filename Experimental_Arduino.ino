@@ -76,7 +76,6 @@ int Rightheelstrike = 0;
 int Leftheelstrike = 0;
 
 float fsr_Right, fsr_Left;
-int step_count = 0;
 
 //変数を設定する
 int R_prev_state = 0;
@@ -303,11 +302,11 @@ void loop() {
       }
       SERIAL_PORT.println("start calibration");
       isCalibration = true;
-//      SERIAL_PORT.print("Time,");
-//      SERIAL_PORT.print("Right_w_hip,");
-//      SERIAL_PORT.print("Left_w_hip,");
-//      SERIAL_PORT.print("Right_FS,");
-//      SERIAL_PORT.println("Left_FS");
+      //      SERIAL_PORT.print("Time,");
+      //      SERIAL_PORT.print("Right_w_hip,");
+      //      SERIAL_PORT.print("Left_w_hip,");
+      //      SERIAL_PORT.print("Right_FS,");
+      //      SERIAL_PORT.println("Left_FS");
       start_time = millis();
       digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     } else if (sign == "d") {
@@ -415,7 +414,7 @@ void loop() {
         time_for_output = (current_time - start_time) / 1000.00;
 
       }
-      
+
       //check if one step is finish or not.
       if (step_duration >= max_step_duration) {
         SERIAL_PORT.println("Finish Step");
@@ -430,7 +429,7 @@ void loop() {
         SERIAL_PORT.print(",");
         SERIAL_PORT.println(current_w_hip);
       }
-      
+
       isRecording = false;
 
       //check if number of steps exceed calibration_steps
@@ -507,7 +506,7 @@ void loop() {
           isMainRight = false;
           isRecievedRorL = false;
           isfinishstep = true;//isfinishstepとか書いて下のprintに入らない様にするわ．
-          step_count += 1;
+          n_of_steps += 1;
         }
         //matlabに送信する
         current_time = millis();
@@ -524,6 +523,7 @@ void loop() {
         } else {
           SERIAL_PORT.println("Finish Step");
           isfinishstep = false;
+          n_of_steps += 1;
         }
 
       } else if (isMainLeft) {
@@ -557,7 +557,7 @@ void loop() {
           isMainLeft = false;
           isRecievedRorL = false;
           isfinishstep = true;
-          step_count += 1;
+          n_of_steps += 1;
         }
         //データをmatlabに送信する
         current_time = millis();
@@ -574,28 +574,30 @@ void loop() {
         } else {
           SERIAL_PORT.println("Finish Step");
           isfinishstep = false;
+          n_of_steps += 1;
         }
 
       }
       isDetected = false;
+
+      if (n_of_steps >= detection_steps) {
+        SERIAL_PORT.println("Finish section");
+        isDetection = false;
+        isDetected = false;
+        isRecievedD_param = false;
+        isRecievedRorL = false;
+        digitalWrite(INT_PIN, !isHigh);
+      } else if (step_duration >= max_step_duration) {
+        isRecievedRorL = false;
+        isMainRight = false;
+        isMainLeft = false;
+        SERIAL_PORT.println("Finish Step");
+      }
     } else {
       SERIAL_PORT.println("Waiting");
       delay(100);
     }
 
-    if (step_count >= detection_steps) {
-      SERIAL_PORT.println("Finish section");
-      isDetection = false;
-      isDetected = false;
-      isRecievedD_param = false;
-      isRecievedRorL = false;
-      digitalWrite(INT_PIN, !isHigh);
-    } else if (step_duration >= max_step_duration) {
-      isRecievedRorL = false;
-      isMainRight = false;
-      isMainLeft = false;
-      SERIAL_PORT.println("Finish Step");
-    }
   }
 
 }

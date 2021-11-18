@@ -77,23 +77,6 @@ int Leftheelstrike = 0;
 
 float fsr_Right, fsr_Left;
 
-//変数を設定する
-int R_prev_state = 0;
-int R_current_state = 3;
-float R_current_w_hip, R_prev_w_hip;
-//R_current_w_hip = 0;
-float R_current_aa_hip = 0, R_prev_aa_hip;
-float R_current_FS, R_current_FS_original;
-
-
-//変数を設定する
-int L_prev_state = 0;
-int L_current_state = 3;
-float L_current_w_hip, L_prev_w_hip;
-//L_current_w_hip = 0;
-float L_current_aa_hip = 0, L_prev_aa_hip;
-float L_current_FS, L_current_FS_original;
-
 float thresholds_R_max,
       thresholds_L_max,
       thresholds_FS;
@@ -106,7 +89,7 @@ float current_w_hip, current_FS;
 
 //Detection
 String RorL;
-float step_duration, step_start_time, max_step_duration;
+float step_duration, step_start_time, max_step_duration, threshold_hip_max;
 volatile bool isfinishstep = false;
 
 //Updating
@@ -373,7 +356,6 @@ void loop() {
         } else if (RorL == "l") {
           //mainlegをleftとする
           isMainLeft = true;
-          L_current_state = 3;
           step_start_time = millis();
           isRecievedRorL = true;
         }
@@ -388,14 +370,10 @@ void loop() {
       fsr_Right = analogRead(fsrAnalogPin_right);
       fsr_Left = analogRead(fsrAnalogPin_left);
 
-      //adjust the variables magnitude
-      R_current_FS = fsr_Right / 1024 * 5;
-      L_current_FS = fsr_Left / 1024 * 5;
-
       if (isMainRight) {
         //変数に取得したデータを代入している
         current_w_hip = myICM_right.gyrZ();
-        current_FS = R_current_FS;
+        current_FS = fsr_Right / 1024 * 5;
 
         //matlabに送信する
         current_time = millis();
@@ -406,7 +384,8 @@ void loop() {
 
         //変数に取得したデータを代入している
         current_w_hip = - myICM_left.gyrZ();
-        current_FS = L_current_FS;
+        current_FS = fsr_Left / 1024 * 5;
+
 
         //データをmatlabに送信する
         current_time = millis();
@@ -451,13 +430,13 @@ void loop() {
         if (RorL == "r") {
           //mainleg をrightとする
           isMainRight = true;
-          R_current_state = 3;
+          current_state = 3;
           step_start_time = millis();
           isRecievedRorL = true;
         } else if (RorL == "l") {
           //mainlegをleftとする
           isMainLeft = true;
-          L_current_state = 3;
+          current_state = 3;
           step_start_time = millis();
           isRecievedRorL = true;
         } else if (RorL == "e") {
@@ -479,119 +458,86 @@ void loop() {
 
       if (isMainRight) {
         //変数に取得したデータを代入している
-        R_current_FS = fsr_Right / 1024 * 5;
-        R_prev_state = R_current_state;
-        R_prev_w_hip = R_current_w_hip;
-        R_prev_aa_hip = R_current_aa_hip;
-        R_current_w_hip = myICM_right.gyrZ();
-        R_current_aa_hip = R_current_w_hip - R_prev_w_hip;
-
-        //Detect StateChange
-        if (R_prev_state == 3) {
-          if ((R_prev_w_hip >= thresholds_R_max) && R_current_aa_hip <= 0 && R_prev_aa_hip >= 0 && R_current_FS < thresholds_FS) {
-            R_current_state = 4;
-          }
-        }
-        else if (R_prev_state == 1) {
-          if (  R_current_FS > thresholds_FS ) {
-            R_current_state = 2;
-          }
-        }
-        else if (R_prev_state == 4) {
-          if (R_prev_w_hip > 0 && R_current_w_hip <= 0) {
-            R_current_state = 1;
-          }
-        }
-        else if (R_prev_state == 2) {
-          isMainRight = false;
-          isRecievedRorL = false;
-          isfinishstep = true;//isfinishstepとか書いて下のprintに入らない様にするわ．
-          n_of_steps += 1;
-        }
-        //matlabに送信する
-        current_time = millis();
-        step_duration = (current_time - step_start_time) / 1000.00;
-        time_for_output = (current_time - start_time) / 1000.00;
-        if (!isfinishstep) {
-          SERIAL_PORT.print(step_duration, 3);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.print(R_current_state);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.print(R_current_FS);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.println(R_current_w_hip);
-        } else {
-          SERIAL_PORT.println("Finish Step");
-          isfinishstep = false;
-          n_of_steps += 1;
-        }
-
+        current_FS = fsr_Right / 1024 * 5;
+        prev_state = current_state;
+        prev_w_hip = current_w_hip;
+        prev_aa_hip = current_aa_hip;
+        current_w_hip = myICM_right.gyrZ();
+        current_aa_hip = current_w_hip - prev_w_hip;
+        threshold_hip_max = thresholds_R_max;
       } else if (isMainLeft) {
-
         //変数に取得したデータを代入している
-        L_current_FS = fsr_Left / 1024 * 5;
-        L_prev_state = L_current_state;
-        L_prev_w_hip = L_current_w_hip;
-        L_prev_aa_hip = L_current_aa_hip;
-        L_current_w_hip = - myICM_left.gyrZ();
-        L_current_aa_hip = L_current_w_hip - L_prev_w_hip;
-
-        //Detect StateChange
-        if (L_prev_state == 3) {
-          if ((L_prev_w_hip >= thresholds_L_max) && L_current_aa_hip <= 0 && L_prev_aa_hip >= 0 && L_current_FS < thresholds_FS) {
-            L_current_state = 4;
-          }
-        }
-        else if (L_prev_state == 1) {
-          if (  L_current_FS > thresholds_FS ) {
-            L_current_state = 2;
-
-          }
-        }
-        else if (L_prev_state == 4) {
-          if (L_prev_w_hip > 0 && L_current_w_hip <= 0) {
-            L_current_state = 1;
-          }
-        }
-        else if (L_prev_state == 2) {
-          isMainLeft = false;
-          isRecievedRorL = false;
-          isfinishstep = true;
-          n_of_steps += 1;
-        }
-        //データをmatlabに送信する
-        current_time = millis();
-        step_duration = (current_time - step_start_time) / 1000.00;
-        time_for_output = (current_time - start_time) / 1000.00;
-        if (!isfinishstep) {
-          SERIAL_PORT.print(step_duration, 3);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.print(L_current_state);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.print(L_current_FS);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.println(L_current_w_hip);
-        } else {
-          SERIAL_PORT.println("Finish Step");
-          isfinishstep = false;
-          n_of_steps += 1;
-        }
-
+        current_FS = fsr_Left / 1024 * 5;
+        prev_state = current_state;
+        prev_w_hip = current_w_hip;
+        prev_aa_hip = current_aa_hip;
+        current_w_hip = myICM_left.gyrZ();
+        current_aa_hip = current_w_hip - prev_w_hip;
+        threshold_hip_max = thresholds_L_max;
       }
-      isDetected = false;
 
-      if (n_of_steps >= detection_steps) {
-        SERIAL_PORT.println("Finish section");
-        isDetection = false;
-        isDetected = false;
-        isRecievedD_param = false;
+      //Detect StateChange
+      if (prev_state == 3) {
+        if ((prev_w_hip >= threshold_hip_max) && current_aa_hip <= 0 && prev_aa_hip >= 0 && current_FS < thresholds_FS) {
+          current_state = 4;
+        }
+      }
+      else if (prev_state == 1) {
+        if (  current_FS > thresholds_FS ) {
+          current_state = 2;
+        }
+      }
+      else if (prev_state == 4) {
+        if (prev_w_hip > 0 && current_w_hip <= 0) {
+          current_state = 1;
+        }
+      }
+      else if (prev_state == 2) {
+        isMainRight = false;
+        isMainLeft = false;
         isRecievedRorL = false;
-        digitalWrite(INT_PIN, !isHigh);
-      } else if (step_duration >= max_step_duration) {
+        isfinishstep = true;//isfinishstepとか書いて下のprintに入らない様にするわ．
+      }
+
+      //Send Data to matlab
+      current_time = millis();
+      step_duration = (current_time - step_start_time) / 1000.00;
+      time_for_output = (current_time - start_time) / 1000.00;
+      //Check Step is finish or not.
+      if (!isfinishstep) {
+        SERIAL_PORT.print(step_duration, 3);
+        SERIAL_PORT.print(",");
+        SERIAL_PORT.print(current_state);
+        SERIAL_PORT.print(",");
+        SERIAL_PORT.print(current_FS);
+        SERIAL_PORT.print(",");
+        SERIAL_PORT.println(current_w_hip);
+      } else {
+        SERIAL_PORT.println("Finish Step");
+        isfinishstep = false;
         isRecievedRorL = false;
         isMainRight = false;
         isMainLeft = false;
-        SERIAL_PORT.println("Finish Step");
+        n_of_steps += 1;
+      }
+      isDetected = false;
+
+      //check if step_duration is over max_step_duration or not
+      if (step_duration >= max_step_duration) {
+        isRecievedRorL = false;
+        isMainRight = false;
+        isMainLeft = false;
+        SERIAL_PORT.println("Time is up");
+        n_of_steps += 1;
+      }
+      
+      //check if detection finish or not
+      if (n_of_steps >= detection_steps) {
+        SERIAL_PORT.println("Finish section");
+        isDetection = false;
+        isRecievedD_param = false;
+        isRecievedRorL = false;
+        digitalWrite(INT_PIN, !isHigh);
       }
     } else {
       SERIAL_PORT.println("Waiting");
@@ -599,5 +545,4 @@ void loop() {
     }
 
   }
-
 }

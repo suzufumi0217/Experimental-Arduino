@@ -291,7 +291,7 @@ void loop() {
       //      SERIAL_PORT.print("Right_FS,");
       //      SERIAL_PORT.println("Left_FS");
       start_time = millis();
-      digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
+      //digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     } else if (sign == "d") {
       while (!isRecievedD_param) {
         if (SERIAL_PORT.available() > 0) {
@@ -316,7 +316,6 @@ void loop() {
       isDetection = true;
       SERIAL_PORT.println("start detection");
       start_time = millis();
-      digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     } else if (sign == "u") {
       while (!isRecievedNewD_param) {
         if (SERIAL_PORT.available() > 0) {
@@ -433,12 +432,14 @@ void loop() {
           current_state = 3;
           step_start_time = millis();
           isRecievedRorL = true;
+          digitalWrite(INT_PIN, isHigh); //Power labに対して，５Vの電圧上昇を送信
         } else if (RorL == "l") {
           //mainlegをleftとする
           isMainLeft = true;
           current_state = 3;
           step_start_time = millis();
           isRecievedRorL = true;
+          digitalWrite(INT_PIN, isHigh); //Power labに対して，５Vの電圧上昇を送信
         } else if (RorL == "e") {
           isDetection = false;
           isDetected = false;
@@ -519,6 +520,7 @@ void loop() {
         isMainRight = false;
         isMainLeft = false;
         n_of_steps += 1;
+        digitalWrite(INT_PIN, !isHigh); //Power labに対して，５Vの電圧下降を送信
       }
       isDetected = false;
 
@@ -529,6 +531,7 @@ void loop() {
         isMainLeft = false;
         SERIAL_PORT.println("Time is up");
         n_of_steps += 1;
+        digitalWrite(INT_PIN, !isHigh); //Power labに対して，５Vの電圧下降を送信
       }
       
       //check if detection finish or not
@@ -537,7 +540,6 @@ void loop() {
         isDetection = false;
         isRecievedD_param = false;
         isRecievedRorL = false;
-        digitalWrite(INT_PIN, !isHigh);
       }
     } else {
       SERIAL_PORT.println("Waiting");

@@ -284,12 +284,8 @@ void loop() {
         }
       }
       SERIAL_PORT.println("start calibration");
+      threshold_FS = 1; // for calibration 
       isCalibration = true;
-      //      SERIAL_PORT.print("Time,");
-      //      SERIAL_PORT.print("Right_w_hip,");
-      //      SERIAL_PORT.print("Left_w_hip,");
-      //      SERIAL_PORT.print("Right_FS,");
-      //      SERIAL_PORT.println("Left_FS");
       start_time = millis();
       //digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     } else if (sign == "d") {
@@ -394,6 +390,7 @@ void loop() {
       }
 
       //check if one step is finish or not.
+      //まだ完成してない"use FS for calibration time in each step" 
       if (step_duration >= max_step_duration) {
         SERIAL_PORT.println("Finish Step");
         isRecievedRorL = false;
@@ -401,11 +398,19 @@ void loop() {
         isMainLeft = false;
         n_of_steps += 1;
       } else {
-        SERIAL_PORT.print(step_duration, 3);
-        SERIAL_PORT.print(",");
-        SERIAL_PORT.print(current_FS);
-        SERIAL_PORT.print(",");
-        SERIAL_PORT.println(current_w_hip);
+        if (current_FS < thresholds_FS) {
+          SERIAL_PORT.print(step_duration, 3);
+          SERIAL_PORT.print(",");
+          SERIAL_PORT.print(current_FS);
+          SERIAL_PORT.print(",");
+          SERIAL_PORT.println(current_w_hip);
+        }else {
+          SERIAL_PORT.print(step_duration, 3);
+          SERIAL_PORT.print(",");
+          SERIAL_PORT.print(current_FS);
+          SERIAL_PORT.print(",");
+          SERIAL_PORT.println(current_w_hip);
+        }
       }
 
       isRecording = false;
@@ -533,7 +538,7 @@ void loop() {
         n_of_steps += 1;
         digitalWrite(INT_PIN, !isHigh); //Power labに対して，５Vの電圧下降を送信
       }
-      
+
       //check if detection finish or not
       if (n_of_steps >= detection_steps) {
         SERIAL_PORT.println("Finish section");

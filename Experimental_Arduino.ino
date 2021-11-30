@@ -70,8 +70,8 @@ volatile bool isCalibration = false;
 volatile bool isRecievedD_param = false;
 volatile bool isRecievedRorL = false;
 
-int fsrAnalogPin_right = 1; // FSR0 is connected to analog 0
-int fsrAnalogPin_left = 0; // FSR1 is connected to analog 1
+int fsrAnalogPin_right = 0; // FSR0 is connected to analog 0
+int fsrAnalogPin_left = 1; // FSR1 is connected to analog 1
 int Rightheelstrike = 0;
 int Leftheelstrike = 0;
 
@@ -284,7 +284,7 @@ void loop() {
         }
       }
       SERIAL_PORT.println("start calibration");
-      threshold_FS = 1; // for calibration 
+      thresholds_FS = 1; // for calibration 
       isCalibration = true;
       start_time = millis();
       //digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
@@ -370,23 +370,20 @@ void loop() {
         current_w_hip = myICM_right.gyrZ();
         current_FS = fsr_Right / 1024 * 5;
 
-        //matlabに送信する
+        //matlabに送信するデータを作る
         current_time = millis();
         step_duration = (current_time - step_start_time) / 1000.00;
         time_for_output = (current_time - start_time) / 1000.00;
 
       } else if (isMainLeft) {
-
         //変数に取得したデータを代入している
         current_w_hip = - myICM_left.gyrZ();
         current_FS = fsr_Left / 1024 * 5;
 
-
-        //データをmatlabに送信する
+        //matlabに送信するデータを作る
         current_time = millis();
         step_duration = (current_time - step_start_time) / 1000.00;
         time_for_output = (current_time - start_time) / 1000.00;
-
       }
 
       //check if one step is finish or not.
@@ -398,19 +395,11 @@ void loop() {
         isMainLeft = false;
         n_of_steps += 1;
       } else {
-        if (current_FS < thresholds_FS) {
           SERIAL_PORT.print(step_duration, 3);
           SERIAL_PORT.print(",");
           SERIAL_PORT.print(current_FS);
           SERIAL_PORT.print(",");
           SERIAL_PORT.println(current_w_hip);
-        }else {
-          SERIAL_PORT.print(step_duration, 3);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.print(current_FS);
-          SERIAL_PORT.print(",");
-          SERIAL_PORT.println(current_w_hip);
-        }
       }
 
       isRecording = false;
@@ -477,7 +466,7 @@ void loop() {
         prev_state = current_state;
         prev_w_hip = current_w_hip;
         prev_aa_hip = current_aa_hip;
-        current_w_hip = myICM_left.gyrZ();
+        current_w_hip = - myICM_left.gyrZ();
         current_aa_hip = current_w_hip - prev_w_hip;
         threshold_hip_max = thresholds_L_max;
       }

@@ -92,6 +92,9 @@ String RorL;
 float step_duration, step_start_time, max_step_duration, threshold_hip_max;
 volatile bool isfinishstep = false;
 float prev_FS;
+int n_ps; //integer for stucking in the preswing 
+float preswing_dur = 0.2; //duration for pre-swing 
+float FS_second_threshold = 1;
 
 //Updating
 volatile bool isRecievedNewD_param = false;
@@ -425,14 +428,18 @@ void loop() {
         if (RorL == "r") {
           //mainleg をrightとする
           isMainRight = true;
-          current_state = 3;
+          //initialize variables
+          current_state = 2;
+          n_ps = 1;
           step_start_time = millis();
           isRecievedRorL = true;
           digitalWrite(INT_PIN, isHigh); //Power labに対して，５Vの電圧上昇を送信
         } else if (RorL == "l") {
           //mainlegをleftとする
           isMainLeft = true;
-          current_state = 3;
+          //initialize variables
+          current_state = 2;
+          n_ps = 1;
           step_start_time = millis();
           isRecievedRorL = true;
           digitalWrite(INT_PIN, isHigh); //Power labに対して，５Vの電圧上昇を送信
@@ -454,6 +461,7 @@ void loop() {
       fsr_Left = analogRead(fsrAnalogPin_left);
       //Initialize variables
       prev_FS = 0;
+      
 
       if (isMainRight) {
         //変数に取得したデータを代入している
@@ -478,23 +486,35 @@ void loop() {
       }
 
       //Detect StateChange
-      if (prev_state == 3) {
+      //T3
+      if (prev_state == 2) { 
         if (current_FS < thresholds_FS && prev_FS > thresholds_FS) {
+          current_state = 3;
+        }
+      }
+      //T4
+      else if (prev_state == 3) {
+        if(n_ps * 0.01 < preswing_dur){
+          current_state = 3;
+          n_ps += 1;
+        }else{
           current_state = 4;
         }
       }
+      //T1
       else if (prev_state == 4) {
         if (prev_w_hip > threshold_hip_max / 4 && current_w_hip <= threshold_hip_max / 4 && current_FS < thresholds_FS) {
           current_state = 1;
         }
       }
+      //T2
       else if (prev_state == 1) {
-        if (  current_FS > thresholds_FS ) {
-          current_state = 2;
+        if (  current_FS > FS_second_threshold ) {
+          current_state = 5;
         }
       }
-
-      else if (prev_state == 2) {
+      //TE
+      else if (prev_state == 5) {
         isMainRight = false;
         isMainLeft = false;
         isRecievedRorL = false;

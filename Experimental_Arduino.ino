@@ -42,59 +42,61 @@ ICM_20948_SPI myICM_left;  // If using SPI create an ICM_20948_SPI object
 #else
 ICM_20948_I2C myICM_left;  // Otherwise create an ICM_20948_I2C object
 #endif
-//#define numOfThresholds 3
 
-int i = 0;
-int num_thresholds = 0;
-int num_time = 0;
-int trial_count = 0;
-int prev_state = 0;
-int current_state = 0;
-float prev_w_hip, prev_aa_hip, current_aa_hip, prev_time, current_time, start_time, time_for_output;
-float time_stamp1 = 0.0;
-float time_stamp2 = 0.0;
-float time_stamp3 = 0.0;
-float time_stamp4 = 0.0;
-float calibration_steps = 0;
-int detection_steps = 0;
+//歩行の状態をstateで表す
+int prev_state = 3; //前の状態
+int current_state = 0; //現在の状態
+//float time_stamp1 = 0.0;
+//float time_stamp2 = 0.0;
+//float time_stamp3 = 0.0;
+//float time_stamp4 = 0.0;
 
+//mocapとpowerLabを同期するためのbool変数
 bool isHigh = true;
+//calibration
+volatile bool isCalibration = false;
 volatile bool isRecording = false;
+volatile bool isReceivedC_params = false;
+volatile bool isRecievedRorL = false;
 volatile bool isMainRight = false;  //MainLegが左右どちらかを表す．bool変数を用意．
 volatile bool isMainLeft = false;
+//detection
 volatile bool isDetection = false;
 volatile bool isDetected = false;
-volatile bool isReceivedC_params = false;
-volatile bool isCalibration = false;
-//volatile bool isStart = false;
 volatile bool isRecievedD_param = false;
-volatile bool isRecievedRorL = false;
+volatile bool isfinishstep = false;
+//Updating
+volatile bool isRecievedNewD_param = false;
 
+//FSR
 int fsrAnalogPin_right = 0; // FSR0 is connected to analog 0
 int fsrAnalogPin_left = 1; // FSR1 is connected to analog 1
-int Rightheelstrike = 0;
-int Leftheelstrike = 0;
-
-float fsr_Right, fsr_Left;
-
+float fsr_Right, fsr_Left, current_FS, prev_FS;
+//IMU
+float current_w_hip, prev_w_hip;
+//float current_aa_hip, prev_aa_hip;
+//Time
+float prev_time, current_time, start_time, time_for_output;
+//threshold used in detection
 float thresholds_R_max,
       thresholds_L_max,
       thresholds_FS;
 
 //calibration
+int num_countC = 0;
 String sign;
-char charC_param[20], charD_param[120];
-int n_of_steps = 0;
-float current_w_hip, current_FS;
+char charC_param[20];
+int calibration_steps = 0;
+float max_step_duration;
+int n_of_steps = 0; //ステップ数を数えるために用意
 
 //Detection
+int num_countD = 0;
+//String sign; calibrationの変数を再利用
+char charD_param[120];
+int detection_steps = 0;
 String RorL;
-float step_duration, step_start_time, max_step_duration, threshold_hip_max;
-volatile bool isfinishstep = false;
-float prev_FS;
-
-//Updating
-volatile bool isRecievedNewD_param = false;
+float step_duration, step_start_time, threshold_hip_max;
 
 void isflag() {
   if (isCalibration) {
@@ -267,34 +269,37 @@ void setup() {
 }
 
 void loop() {
-  if (SERIAL_PORT.available() > 0) { // キー入力待ち
+   // キー入力がないときは以下のif文はスルーする．
+  if (SERIAL_PORT.available() > 0) {
     sign = SERIAL_PORT.readStringUntil('\r');//文字取り出す
-    if (sign == "c") {
+    if (sign == "c") { //calibration
+      //calibrationのパラメータを取得するとwhileを抜ける
       while (!isReceivedC_params) {
         if (SERIAL_PORT.available() > 0) {
-          charC_param[num_time] = SERIAL_PORT.read();
-          if (charC_param[num_time] == '\r') {
-            charC_param[num_time] = '\0';
+          charC_param[num_countC] = SERIAL_PORT.read();
+          if (charC_param[num_countC] == '\r') {
+            charC_param[num_countC] = '\0';
             calibration_steps = atof(strtok(charC_param, ","));
             max_step_duration = atof(strtok(NULL, ","));
             isReceivedC_params = true;
-            num_time = 0;
+            num_countC = 0;
           } else {
-            num_time += 1;
+            num_countC += 1;
           }
         }
       }
       SERIAL_PORT.println("start calibration");
-      thresholds_FS = 1; // for calibration
+      //      thresholds_FS = 1; // for calibration
       isCalibration = true;
       start_time = millis();
       //digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
-    } else if (sign == "d") {
+    } else if (sign == "d") { //detection
+      //detectionのパラメータを取得するとwhileを抜ける
       while (!isRecievedD_param) {
         if (SERIAL_PORT.available() > 0) {
-          charD_param[num_thresholds] = SERIAL_PORT.read();
-          if (charD_param[num_thresholds] == '\r') {
-            charD_param[num_thresholds] == '\0';
+          charD_param[num_countD] = SERIAL_PORT.read();
+          if (charD_param[num_countD] == '\r') {
+            charD_param[num_countD] == '\0';
             //matlabからthresholdsを受け取って，代入する
             thresholds_R_max = atof(strtok(charD_param, ","));
             thresholds_L_max = atof(strtok(NULL, ","));
@@ -304,21 +309,22 @@ void loop() {
             isRecievedD_param = true;
             SERIAL_PORT.println("Complete recieving D_params");
             SERIAL_PORT.println();
-            num_thresholds = 0;
+            num_countD = 0;
           } else {
-            num_thresholds += 1;
+            num_countD += 1;
           }
         }
       }
-      isDetection = true;
       SERIAL_PORT.println("start detection");
+      isDetection = true;
       start_time = millis();
-    } else if (sign == "u") {
+    } else if (sign == "u") { //Update detection params
+      //detectionの新しいパラメータを取得するとwhileを抜ける
       while (!isRecievedNewD_param) {
         if (SERIAL_PORT.available() > 0) {
-          charD_param[num_thresholds] = SERIAL_PORT.read();
-          if (charD_param[num_thresholds] == '\r') {
-            charD_param[num_thresholds] == '\0';
+          charD_param[num_countD] = SERIAL_PORT.read();
+          if (charD_param[num_countD] == '\r') {
+            charD_param[num_countD] == '\0';
             //matlabからthresholdsを受け取って，代入する
             thresholds_R_max = atof(strtok(charD_param, ","));
             thresholds_L_max = atof(strtok(NULL, ","));
@@ -328,29 +334,30 @@ void loop() {
             isRecievedNewD_param = true;
             SERIAL_PORT.println("Complete recieving new D_params");
             SERIAL_PORT.println();
-            num_thresholds = 0;
+            num_countD = 0;
           } else {
-            num_thresholds += 1;
+            num_countD += 1;
           }
         }
       }
       isDetection = true;
       SERIAL_PORT.println("Restart detection");
       start_time = millis();
-      digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
+      //digitalWrite(INT_PIN, isHigh); //接続機器に対して，５Vを発することで同期を行っている．
     }
   }
   if (isRecording) {
+    //Right or leftどちらの脚のセンサーを使うか入力待ち
     while (!isRecievedRorL) {
-      if (SERIAL_PORT.available() > 0) { //キー入力待ち
+      if (SERIAL_PORT.available() > 0) { 
         RorL = SERIAL_PORT.readStringUntil('\r');//文字取り出す
         if (RorL == "r") {
-          //mainleg をrightとする
+          //swing leg をrightとする
           isMainRight = true;
           step_start_time = millis();
           isRecievedRorL = true;
         } else if (RorL == "l") {
-          //mainlegをleftとする
+          //swing legをleftとする
           isMainLeft = true;
           step_start_time = millis();
           isRecievedRorL = true;
@@ -367,22 +374,20 @@ void loop() {
       fsr_Left = analogRead(fsrAnalogPin_left);
 
       if (isMainRight) {
-        //変数に取得したデータを代入している
+        //IMUとFSRのデータを取得して代入
         current_w_hip = myICM_right.gyrZ();
         current_FS = fsr_Right / 1024 * 5;
 
-        //matlabに送信するデータを作る
+        //経過時間を計算する
         current_time = millis();
         step_duration = (current_time - step_start_time) / 1000.00;
         time_for_output = (current_time - start_time) / 1000.00;
-
       } else if (isMainLeft) {
-        //変数に取得したデータを代入している
+        //IMUとFSRのデータを取得して代入　左のIMUには"-"をつけている
         current_w_hip = - myICM_left.gyrZ();
         current_FS = fsr_Left / 1024 * 5;
 
-
-        //matlabに送信するデータを作る
+        //経過時間を計算する
         current_time = millis();
         step_duration = (current_time - step_start_time) / 1000.00;
         time_for_output = (current_time - start_time) / 1000.00;
@@ -403,9 +408,7 @@ void loop() {
         SERIAL_PORT.print(",");
         SERIAL_PORT.println(current_w_hip);
       }
-
-      isRecording = false;
-
+      
       //check if number of steps exceed calibration_steps
       if (n_of_steps >= calibration_steps) {
         SERIAL_PORT.println("Finish calibration section");
@@ -413,12 +416,14 @@ void loop() {
         isReceivedC_params  = false;
         n_of_steps = 0;
       }
+      isRecording = false;
     }
-    else {
+    else {//IMUからdataが正常に送信されない場合
       SERIAL_PORT.println("Waiting");
       delay(100);
     }
   } else if (isDetected) {
+    //Right or leftどちらの脚のセンサーを使うか入力待ち　detectionを終わるときは"e"を入力する
     while (!isRecievedRorL) {
       if (SERIAL_PORT.available() > 0) { //キー入力待ち
         RorL = SERIAL_PORT.readStringUntil('\r');//文字取り出す
@@ -436,7 +441,7 @@ void loop() {
           step_start_time = millis();
           isRecievedRorL = true;
           digitalWrite(INT_PIN, isHigh); //Power labに対して，５Vの電圧上昇を送信
-        } else if (RorL == "e") {
+        } else if (RorL == "e") { //Detectionを終了する
           isDetection = false;
           isDetected = false;
           isRecievedRorL = true;
@@ -445,25 +450,27 @@ void loop() {
         }
       }
     }
-    if ( myICM_right.dataReady() && myICM_left.dataReady()) {
+    //IMUのデータがavailableなら以下のif入る
+    if ( myICM_right.dataReady() && myICM_left.dataReady()) { 
       myICM_right.getAGMT();                // The values are only updated when you call 'getAGMT'
       myICM_left.getAGMT();
 
-      //Footswitches get data
+      //FSR data acquisition
       fsr_Right = analogRead(fsrAnalogPin_right);
       fsr_Left = analogRead(fsrAnalogPin_left);
       //Initialize variables
       prev_FS = 0;
 
+      //Switching sensors of right and left
       if (isMainRight) {
         //変数に取得したデータを代入している
         prev_FS = current_FS;
         current_FS = fsr_Right / 1024 * 5;
         prev_state = current_state;
         prev_w_hip = current_w_hip;
-        prev_aa_hip = current_aa_hip;
+        //        prev_aa_hip = current_aa_hip;
         current_w_hip = myICM_right.gyrZ();
-        current_aa_hip = current_w_hip - prev_w_hip;
+        //        current_aa_hip = current_w_hip - prev_w_hip;
         threshold_hip_max = thresholds_R_max;
       } else if (isMainLeft) {
         //変数に取得したデータを代入している
@@ -471,9 +478,9 @@ void loop() {
         current_FS = fsr_Left / 1024 * 5;
         prev_state = current_state;
         prev_w_hip = current_w_hip;
-        prev_aa_hip = current_aa_hip;
+        //        prev_aa_hip = current_aa_hip;
         current_w_hip = - myICM_left.gyrZ();
-        current_aa_hip = current_w_hip - prev_w_hip;
+        //        current_aa_hip = current_w_hip - prev_w_hip;
         threshold_hip_max = thresholds_L_max;
       }
 
@@ -482,19 +489,15 @@ void loop() {
         if (current_FS < thresholds_FS && prev_FS > thresholds_FS) {
           current_state = 4;
         }
-      }
-      else if (prev_state == 4) {
+      } else if (prev_state == 4) {
         if (prev_w_hip > threshold_hip_max / 4 && current_w_hip <= threshold_hip_max / 4 && current_FS < thresholds_FS) {
           current_state = 1;
         }
-      }
-      else if (prev_state == 1) {
+      } else if (prev_state == 1) {
         if (  current_FS > thresholds_FS ) {
           current_state = 2;
         }
-      }
-
-      else if (prev_state == 2) {
+      } else if (prev_state == 2) {
         isMainRight = false;
         isMainLeft = false;
         isRecievedRorL = false;
@@ -523,7 +526,6 @@ void loop() {
         n_of_steps += 1;
         digitalWrite(INT_PIN, !isHigh); //Power labに対して，５Vの電圧下降を送信
       }
-      isDetected = false;
 
       //check if step_duration is over max_step_duration or not
       if (step_duration >= max_step_duration) {
@@ -543,10 +545,10 @@ void loop() {
         isRecievedRorL = false;
         n_of_steps = 0;
       }
+      isDetected = false;
     } else {
       SERIAL_PORT.println("Waiting");
       delay(100);
     }
-
   }
 }
